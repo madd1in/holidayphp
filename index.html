@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mosswing Relic Quest</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="layout">
+    <section class="panel">
+      <div class="panel-top">
+        <div>
+          <p class="eyebrow">Browser Adventure</p>
+          <h1>Mosswing Relic Quest</h1>
+          <p class="subtitle">Neue Karten, echte Asset-BGM und ein dichter Single-Screen ohne Scrollen.</p>
+        </div>
+        <div class="hearts-wrap">
+          <div class="hearts" id="hearts" aria-label="Leben"></div>
+        </div>
+      </div>
+
+      <section class="hud-card">
+        <ul class="hud">
+          <li><span>Level</span><strong id="levelName">Waldtempel</strong></li>
+          <li><span>Quest</span><strong id="questText">Abenteuer starten</strong></li>
+          <li><span>Schluessel</span><strong><span id="keys">0</span>/<span id="keysRequired">3</span></strong></li>
+          <li><span>Gegner</span><strong id="enemies">0</strong></li>
+          <li><span>Boss</span><strong id="bossStatus">Kein Boss</strong></li>
+          <li><span>Rupees</span><strong id="rupees">0</strong></li>
+          <li><span>Trank</span><strong id="potions">0</strong></li>
+          <li><span>Schwert</span><strong id="swordLevel">1</strong></li>
+          <li><span>Waffe</span><strong id="weaponName">Schwert</strong></li>
+        </ul>
+      </section>
+
+      <div class="panel-bottom">
+        <section class="minimap-card">
+          <div class="mini-head">
+            <p class="menu-tag">Minimap</p>
+            <p class="mini-copy">Portal, Boss, Gegner und Schluessel live.</p>
+          </div>
+          <canvas id="minimap" width="160" height="112" aria-label="Minimap"></canvas>
+        </section>
+
+        <section class="tips-card">
+          <p class="menu-tag">Steuerung</p>
+          <p class="instructions">
+            <strong>WASD</strong>/<strong>Pfeile</strong> bewegen, <strong>Leertaste</strong> angreifen, <strong>Shift</strong> dashen, <strong>Q</strong> Waffe wechseln, <strong>H</strong> Trank, <strong>E</strong> reden, <strong>P</strong> Pause, <strong>M</strong> Musik.
+          </p>
+          <div class="actions">
+            <button id="startButton" type="button">Start</button>
+            <button id="continueButton" type="button">Fortsetzen</button>
+            <button id="restartButton" type="button">Neu starten</button>
+            <button id="clearSaveButton" type="button">Save loeschen</button>
+            <button id="musicButton" type="button">Musik: Aus</button>
+          </div>
+          <p class="message" id="message"></p>
+        </section>
+      </div>
+    </section>
+
+    <section class="game-shell">
+      <canvas id="game" width="640" height="448" aria-label="Mosswing Relic Quest Spielfeld"></canvas>
+      <div class="dialog-box" id="dialogBox"></div>
+      <div class="mobile-controls" id="mobileControls" aria-label="Touch Steuerung">
+        <div class="mobile-top-actions">
+          <button class="mobile-pill" id="mobileMusicButton" type="button" aria-label="Musik">M</button>
+          <button class="mobile-pill" id="fullscreenButton" type="button" aria-label="Vollbild">F</button>
+        </div>
+        <div class="dpad" aria-label="Bewegen">
+          <button class="touch-btn dpad-up" data-hold="up" type="button" aria-label="Hoch">^</button>
+          <button class="touch-btn dpad-left" data-hold="left" type="button" aria-label="Links">&lt;</button>
+          <button class="touch-btn dpad-right" data-hold="right" type="button" aria-label="Rechts">&gt;</button>
+          <button class="touch-btn dpad-down" data-hold="down" type="button" aria-label="Runter">v</button>
+        </div>
+        <div class="action-pad" aria-label="Aktionen">
+          <button class="touch-btn action-main" data-action="attack" type="button" aria-label="Angriff">A</button>
+          <button class="touch-btn" data-action="dash" type="button" aria-label="Dash">D</button>
+          <button class="touch-btn" data-action="interact" type="button" aria-label="Interagieren">E</button>
+          <button class="touch-btn" data-action="potion" type="button" aria-label="Trank">H</button>
+          <button class="touch-btn" data-action="weapon" type="button" aria-label="Waffe wechseln">Q</button>
+        </div>
+      </div>
+      <div class="pause-overlay hidden" id="pauseOverlay">
+        <div class="pause-card">
+          <p class="menu-tag">Pause</p>
+          <h2>Spiel pausiert</h2>
+          <p>Druecke <strong>P</strong>, um weiterzuspielen. Musik, Save und Neustart bleiben direkt erreichbar.</p>
+        </div>
+      </div>
+      <div class="pause-overlay hidden" id="gameOverOverlay">
+        <div class="pause-card">
+          <p class="menu-tag">Game Over</p>
+          <h2>Die Fee wartet auf den naechsten Versuch</h2>
+          <p>Starte neu oder setze deinen Save fort. Der leichte Modus bleibt aktiv.</p>
+        </div>
+      </div>
+      <div class="menu-overlay" id="menuOverlay">
+        <div class="menu-card">
+          <div class="title-logo">
+            <span class="title-main">Mosswing</span>
+            <span class="title-sub">Relic Quest</span>
+          </div>
+          <p class="menu-tag">Leichter Modus</p>
+          <h2>Mehr Dungeons, mehr Glow, mehr Abenteuer</h2>
+          <p>Jetzt mit Mooslicht Overworld, Wurzelkrypta, Windbruecken, Aschenofen, Kristallquell und Mondzitadelle.</p>
+          <p>Neue Ideen: Runenaltare, Reliktsterne, Waffenwechsel, Dash und echte BGM-Tracks je Zone.</p>
+          <div class="menu-actions">
+            <button id="menuStartButton" type="button">Neues Spiel</button>
+            <button id="menuContinueButton" type="button">Fortsetzen</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>
