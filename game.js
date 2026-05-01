@@ -31,6 +31,7 @@ const gameShellEl = document.querySelector(".game-shell");
 const mobileControlsEl = document.getElementById("mobileControls");
 const fullscreenButton = document.getElementById("fullscreenButton");
 const mobileMusicButton = document.getElementById("mobileMusicButton");
+const mobileActionButtons = {};
 
 const tileSize = 32;
 const mapWidth = 20;
@@ -44,6 +45,7 @@ const hazardTiles = new Set(["^", "L"]);
 const slowTiles = new Set(["~"]);
 const input = { up: false, down: false, left: false, right: false, blocking: false };
 const weaponLabels = { sword: "Schwert", lance: "Lanze", wand: "Wand" };
+const weaponBadges = { sword: "S", lance: "L", wand: "W" };
 const assetAtlas = new Image();
 assetAtlas.src = "assets/relic-ai-sheet.png";
 let assetAtlasReady = false;
@@ -656,6 +658,7 @@ function syncMobileMode() {
   document.body.classList.toggle("mobile-mode", isMobileMode);
   document.body.classList.toggle("desktop-mode", !isMobileMode);
   if (mobileControlsEl) mobileControlsEl.setAttribute("aria-hidden", isMobileMode ? "false" : "true");
+  updateTouchControls(true);
   requestAnimationFrame(fitGameCanvas);
 }
 
@@ -849,6 +852,65 @@ function renderHearts() {
   }
 }
 
+function mobileActionButton(action) {
+  if (!mobileControlsEl) return null;
+  if (!mobileActionButtons[action]) {
+    mobileActionButtons[action] = mobileControlsEl.querySelector(`[data-action="${action}"]`);
+  }
+  return mobileActionButtons[action];
+}
+
+function setTouchBadge(button, badge) {
+  if (!button) return;
+  const next = badge ? String(badge) : "";
+  if (next) button.dataset.badge = next;
+  else delete button.dataset.badge;
+}
+
+function pulseTouchHaptic(pattern = 8) {
+  if (!isMobileMode || !navigator.vibrate) return;
+  navigator.vibrate(pattern);
+}
+
+function updateTouchControls(force = false) {
+  if (!mobileControlsEl || !gameState || !gameState.player) return;
+  if (!force) {
+    updateTouchControls.frame = ((updateTouchControls.frame || 0) + 1) % 4;
+    if (updateTouchControls.frame !== 0) return;
+  }
+  const player = gameState.player;
+  const inventory = player.inventory;
+  const focus = player.focus || 0;
+  const focusReady = focus >= focusMax;
+  const attackButton = mobileActionButton("attack");
+  const dashButton = mobileActionButton("dash");
+  const potionButton = mobileActionButton("potion");
+  const weaponButton = mobileActionButton("weapon");
+
+  if (attackButton) {
+    attackButton.classList.toggle("touch-charged", focusReady);
+    attackButton.classList.toggle("touch-cooldown", player.attackTimer > 0);
+    setTouchBadge(attackButton, focusReady ? "MAX" : focus > 0 ? focus : "");
+    attackButton.setAttribute("aria-label", focusReady ? "Fokus-Angriff bereit" : `Angriff, Fokus ${focus} von ${focusMax}`);
+  }
+  if (dashButton) {
+    dashButton.classList.toggle("touch-cooldown", player.dashCooldown > 0);
+    setTouchBadge(dashButton, player.dashCooldown > 0 ? Math.ceil(player.dashCooldown / 10) : "");
+    dashButton.setAttribute("aria-label", player.dashCooldown > 0 ? "Dash laedt" : "Dash bereit");
+  }
+  if (potionButton) {
+    const potionCount = inventory.potions || 0;
+    potionButton.classList.toggle("touch-empty", potionCount <= 0);
+    setTouchBadge(potionButton, potionCount > 0 ? potionCount > 9 ? "9+" : `x${potionCount}` : "");
+    potionButton.setAttribute("aria-label", `${potionCount} Heiltraenke`);
+  }
+  if (weaponButton) {
+    setTouchBadge(weaponButton, weaponBadges[inventory.currentWeapon] || "Q");
+    weaponButton.classList.toggle("touch-empty", inventory.unlockedWeapons.length < 2);
+    weaponButton.setAttribute("aria-label", `Waffe wechseln: ${weaponLabels[inventory.currentWeapon] || "Schwert"}`);
+  }
+}
+
 function updateHud() {
   renderHearts();
   levelNameEl.textContent = gameState.levelName;
@@ -868,6 +930,7 @@ function updateHud() {
     mobileMusicButton.textContent = musicEnabled ? "M+" : "M";
     mobileMusicButton.classList.toggle("active", musicEnabled);
   }
+  updateTouchControls(true);
 }
 
 function togglePause() {
@@ -2151,6 +2214,7 @@ function gameLoop() {
     updateFairy();
   }
   updateParticles();
+  updateTouchControls();
   draw();
   requestAnimationFrame(gameLoop);
 }
@@ -2309,13 +2373,20 @@ function releaseTouchMovement() {
   input.right = false;
 }
 
-function runTouchAction(action) {
+function runTouchAction(action, button) {
   ensureAudio();
+  const focusReady = action === "attack" && gameState && gameState.player && (gameState.player.focus || 0) >= focusMax;
+  pulseTouchHaptic(focusReady ? [12, 18, 12] : action === "dash" ? 10 : 7);
+  if (button) {
+    button.classList.add("touch-fired");
+    window.setTimeout(() => button.classList.remove("touch-fired"), 160);
+  }
   if (action === "attack") performAttack();
   if (action === "dash") dash();
   if (action === "interact") interactNearest();
   if (action === "potion") usePotion();
   if (action === "weapon") cycleWeapon();
+  updateTouchControls(true);
 }
 
 function bindTouchControls() {
@@ -2325,11 +2396,14 @@ function bindTouchControls() {
     const start = (event) => {
       event.preventDefault();
       input[key] = true;
+      button.classList.add("touch-held");
+      pulseTouchHaptic(5);
       button.setPointerCapture?.(event.pointerId);
     };
     const end = (event) => {
       event.preventDefault();
       input[key] = false;
+      button.classList.remove("touch-held");
       button.releasePointerCapture?.(event.pointerId);
     };
     button.addEventListener("pointerdown", start);
@@ -2338,9 +2412,10 @@ function bindTouchControls() {
     button.addEventListener("pointerleave", end);
   }
   for (const button of mobileControlsEl.querySelectorAll("[data-action]")) {
+    mobileActionButtons[button.dataset.action] = button;
     button.addEventListener("pointerdown", (event) => {
       event.preventDefault();
-      runTouchAction(button.dataset.action);
+      runTouchAction(button.dataset.action, button);
     });
   }
 }
