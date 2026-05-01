@@ -1,4 +1,4 @@
-const SAVE_KEY = "mosswing-relic-quest-save-v8";
+const SAVE_KEY = "mosswing-relic-quest-save-v10";
 const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 
@@ -37,6 +37,7 @@ const mapWidth = 20;
 const mapHeight = 14;
 const canvasAspect = canvas.width / canvas.height;
 const maxHealth = 8;
+const focusMax = 5;
 const fairyHeal = 2;
 const wallTiles = new Set(["#", "0", "o", "v", "G"]);
 const hazardTiles = new Set(["^", "L"]);
@@ -410,6 +411,7 @@ let dialogTimeoutId = null;
 let interactHintShown = false;
 let particles = [];
 let enemyProjectiles = [];
+let bossWarnings = [];
 let backgroundSpecks = [];
 let screenShake = 0;
 let isMobileMode = false;
@@ -494,6 +496,8 @@ function createPlayer() {
     invulnerable: 0,
     dashCooldown: 0,
     echoShieldCooldown: 0,
+    focus: 0,
+    focusFlash: 0,
     attackFlash: 0,
     isBlocking: false,
     inventory: createInventory()
@@ -537,6 +541,7 @@ function createBoss(x, y, bossConfig, theme) {
     directionY: 1,
     alive: true,
     changeTimer: 48,
+    attackTimer: 105,
     health: bossConfig.health,
     maxHealth: bossConfig.health,
     color: theme === "lava" ? "#ff6d4f" : "#e5558f",
@@ -703,7 +708,8 @@ function buildLevel(levelIndex, existingPlayer, saved) {
 
   mapCacheDirty = true;
   enemyProjectiles = [];
-  const state = { map, player, keys, enemies, chests, npcs, shops, altars, relics, boss, door, portal, keysRequired, collectedKeys: 0, victory: false, gameOver: false, levelIndex, levelName: def.name, finishedGame: false, enemyClearRewarded: false, fairy: createFairy(player), quests: createQuestState(), lastAttackVisual: null };
+  bossWarnings = [];
+  const state = { map, player, keys, enemies, chests, npcs, shops, altars, relics, boss, door, portal, keysRequired, collectedKeys: 0, victory: false, gameOver: false, levelIndex, levelName: def.name, finishedGame: false, enemyClearRewarded: false, fairy: createFairy(player), quests: createQuestState(), lastAttackVisual: null, lastFocusPulse: null };
   if (saved) hydrateLevelState(state, saved);
   return state;
 }
@@ -723,6 +729,7 @@ function hydrateLevelState(state, saved) {
   }
   player.health = typeof saved.playerHealth === "number" ? Math.max(1, Math.min(playerMaxHealth(player), saved.playerHealth)) : Math.min(player.health, playerMaxHealth(player));
   player.echoShieldCooldown = saved.playerEchoShieldCooldown || 0;
+  player.focus = Math.max(0, Math.min(focusMax, saved.playerFocus || 0));
   if (saved.quests) state.quests = { ...state.quests, ...saved.quests };
   state.enemyClearRewarded = Boolean(saved.enemyClearRewarded);
   if (Array.isArray(saved.keysCollected)) saved.keysCollected.forEach((value, index) => { if (state.keys[index]) state.keys[index].collected = Boolean(value); });
@@ -747,6 +754,7 @@ function saveGame() {
   localStorage.setItem(SAVE_KEY, JSON.stringify({
     levelIndex: gameState.levelIndex,
     playerHealth: gameState.player.health,
+    playerFocus: gameState.player.focus,
     playerEchoShieldCooldown: gameState.player.echoShieldCooldown,
     playerX: gameState.player.x,
     playerY: gameState.player.y,
@@ -1051,6 +1059,7 @@ function updateAltarsAndRelics() {
 
 function applyRelicPower(kind) {
   const player = gameState.player;
+  addFocus(1);
   if (kind === "glow") {
     healPlayer(2);
   } else if (kind === "echo") {
@@ -1199,10 +1208,10 @@ function updateEnemyProjectiles() {
     shot.x += shot.vx;
     shot.y += shot.vy;
     shot.life -= 1;
-    if (isBlockedPixel(shot.x, shot.y)) shot.life = 0;
-    if (!gameState.gameOver && player.invulnerable <= 0 && distance(player, shot) < 18) {
+    if (!shot.pierceWalls && isBlockedPixel(shot.x, shot.y)) shot.life = 0;
+    if (!gameState.gameOver && player.invulnerable <= 0 && distance(player, shot) < (shot.radius || 5) + 13) {
       shot.life = 0;
-      hitPlayer("Magiekugel trifft. Beweg dich quer zum Schuss.");
+      hitPlayer(shot.message || "Magiekugel trifft. Beweg dich quer zum Schuss.");
     }
   }
   enemyProjectiles = enemyProjectiles.filter((shot) => shot.life > 0);
@@ -1223,27 +1232,90 @@ function checkEnemyClearReward() {
   return true;
 }
 
+function addFocus(amount = 1) {
+  const player = gameState.player;
+  const before = player.focus || 0;
+  player.focus = Math.min(focusMax, before + amount);
+  if (before < focusMax && player.focus >= focusMax) {
+    player.focusFlash = 90;
+    spawnParticles(player.x, player.y, "#f7d154", 18, 2.4, -0.01);
+    showDialog("Runenfokus voll. Dein naechster Angriff wird ein Runenschlag.", 1800);
+    playJingle([523.25, 783.99, 1046.5], 0.045, "triangle", 0.025);
+  }
+}
+
 function defeatEnemy(enemy, color) {
   enemy.alive = false;
   gameState.player.inventory.rupees += enemy.role === "brute" ? 16 : enemy.role === "mage" ? 14 : 10;
+  addFocus(enemy.role === "brute" ? 2 : 1);
   spawnParticles(enemy.x, enemy.y, color, enemy.role === "brute" ? 16 : 10, 2.2);
 }
 
 function updateBoss() {
   const { boss, player } = gameState;
   if (!boss || !boss.alive) return;
+  const enraged = boss.health <= boss.maxHealth / 2;
   boss.changeTimer -= 1;
-  boss.phase += 0.05;
+  boss.attackTimer -= 1;
+  boss.phase += enraged ? 0.075 : 0.05;
   if (boss.changeTimer <= 0) {
-    boss.changeTimer = 42;
+    boss.changeTimer = enraged ? 30 : 42;
     boss.directionX = Math.sign(player.x - boss.x) || boss.directionX;
     boss.directionY = Math.sign(player.y - boss.y) || boss.directionY;
   }
-  const dash = distance(player, boss) < 170 ? 1.25 : 1;
+  const playerDistance = distance(player, boss);
+  const dash = playerDistance < 170 ? (enraged ? 1.48 : 1.25) : 1;
   tryMoveEntity(boss, boss.directionX * boss.speed * dash, boss.directionY * boss.speed * dash, boss.size);
-  boss.x += Math.cos(boss.phase) * 0.6;
-  boss.y += Math.sin(boss.phase) * 0.6;
+  boss.x += Math.cos(boss.phase) * (enraged ? 0.9 : 0.6);
+  boss.y += Math.sin(boss.phase) * (enraged ? 0.9 : 0.6);
+  if (boss.attackTimer <= 0 && playerDistance < 230) {
+    queueBossWarning(boss, player, enraged ? "burst" : "bolt");
+    boss.attackTimer = enraged ? 86 : 125;
+  }
   if (!gameState.gameOver && player.invulnerable <= 0 && distance(player, boss) < 28) hitPlayer(`${boss.name} trifft hart, aber der leichte Modus faengt dich ab.`);
+}
+
+function queueBossWarning(boss, player, kind) {
+  bossWarnings.push({
+    x: boss.x,
+    y: boss.y,
+    targetX: player.x,
+    targetY: player.y,
+    angle: Math.atan2(player.y - boss.y, player.x - boss.x),
+    timer: 38,
+    maxTimer: 38,
+    kind,
+    bossName: boss.name
+  });
+  spawnParticles(boss.x, boss.y, kind === "burst" ? "#ff9f5c" : "#ff7b63", 10, 1.6, -0.01);
+}
+
+function updateBossWarnings() {
+  for (const warning of bossWarnings) {
+    warning.timer -= 1;
+    if (warning.timer <= 0) fireBossWarning(warning);
+  }
+  bossWarnings = bossWarnings.filter((warning) => warning.timer > 0);
+}
+
+function fireBossWarning(warning) {
+  const angles = warning.kind === "burst"
+    ? [warning.angle - 0.34, warning.angle, warning.angle + 0.34]
+    : [warning.angle];
+  for (const angle of angles) {
+    enemyProjectiles.push({
+      x: warning.x,
+      y: warning.y,
+      vx: Math.cos(angle) * 3.0,
+      vy: Math.sin(angle) * 3.0,
+      life: 115,
+      radius: warning.kind === "burst" ? 7 : 6,
+      color: warning.kind === "burst" ? "#ff9f5c" : "#ff7b63",
+      message: `${warning.bossName} feuert einen Runenschuss.`
+    });
+  }
+  screenShake = Math.max(screenShake, warning.kind === "burst" ? 7 : 4);
+  playJingle(warning.kind === "burst" ? [164.81, 220, 329.63] : [196, 261.63], 0.045, "sawtooth", 0.02);
 }
 
 function updateTerrainHazards() {
@@ -1348,6 +1420,21 @@ function performAttack() {
     weaponConfig.damage += 1;
     weaponConfig.color = "#d7fbff";
   }
+  const focusStrike = player.focus >= focusMax;
+  if (focusStrike) {
+    player.focus = 0;
+    player.focusFlash = 0;
+    weaponConfig.reach += 20;
+    weaponConfig.enemyRange += 18;
+    weaponConfig.bossRange += 20;
+    weaponConfig.damage += 2;
+    weaponConfig.cooldown += 3;
+    weaponConfig.color = "#f7d154";
+    gameState.lastFocusPulse = { x: player.x, y: player.y, timer: 16, maxTimer: 16 };
+    spawnParticles(player.x, player.y, "#f7d154", 24, 2.8, -0.01);
+    setMessage("Runenschlag entfesselt.");
+    playJingle([392, 523.25, 783.99, 1046.5], 0.04, "triangle", 0.035);
+  }
   player.attackTimer = weaponConfig.cooldown;
   player.attackFlash = 8;
   playJingle(weaponConfig.sound, 0.04, "square", 0.03);
@@ -1415,8 +1502,10 @@ function tickTimers() {
   if (player.invulnerable > 0) player.invulnerable -= 1;
   if (player.dashCooldown > 0) player.dashCooldown -= 1;
   if (player.echoShieldCooldown > 0) player.echoShieldCooldown -= 1;
+  if (player.focusFlash > 0) player.focusFlash -= 1;
   if (player.attackFlash > 0) player.attackFlash -= 1;
   if (gameState.lastAttackVisual && --gameState.lastAttackVisual.timer <= 0) gameState.lastAttackVisual = null;
+  if (gameState.lastFocusPulse && --gameState.lastFocusPulse.timer <= 0) gameState.lastFocusPulse = null;
 }
 function themePalette() {
   const theme = levels[gameState.levelIndex].theme;
@@ -1768,9 +1857,28 @@ function drawEnemyProjectiles() {
     ctx.fillStyle = shot.color;
     ctx.globalAlpha = Math.max(0.25, Math.min(1, shot.life / 30));
     ctx.beginPath();
-    ctx.arc(shot.x, shot.y, 5 + Math.sin(shot.life * 0.25) * 1.2, 0, Math.PI * 2);
+    ctx.arc(shot.x, shot.y, (shot.radius || 5) + Math.sin(shot.life * 0.25) * 1.2, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = 1;
+  }
+}
+
+function drawBossWarnings() {
+  for (const warning of bossWarnings) {
+    const alpha = Math.max(0.15, 1 - warning.timer / warning.maxTimer);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = warning.kind === "burst" ? "#ff9f5c" : "#ff7b63";
+    ctx.lineWidth = warning.kind === "burst" ? 5 : 4;
+    ctx.beginPath();
+    ctx.moveTo(warning.x, warning.y);
+    ctx.lineTo(warning.targetX, warning.targetY);
+    ctx.stroke();
+    ctx.globalAlpha = alpha * 0.45;
+    ctx.beginPath();
+    ctx.arc(warning.targetX, warning.targetY, warning.kind === "burst" ? 22 : 15, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
   }
 }
 
@@ -1815,6 +1923,13 @@ function drawBoss() {
   const boss = gameState.boss;
   if (!boss || !boss.alive) return;
   if (drawComplexSprite("bossFront", boss.x, boss.y, 58, 58, -8) || drawAtlasSprite("boss", boss.x, boss.y, 48, 48, -5)) {
+    if (boss.health <= boss.maxHealth / 2) {
+      ctx.strokeStyle = "rgba(255,159,92,0.78)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(boss.x, boss.y, 31 + Math.sin(boss.phase) * 3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.fillStyle = "rgba(255,123,99,0.9)";
     ctx.fillRect(boss.x - 18, boss.y - 30, 36, 6);
     ctx.fillStyle = "#7af56e";
@@ -1823,6 +1938,11 @@ function drawBoss() {
   }
   ctx.fillStyle = boss.color;
   ctx.fillRect(boss.x - 16, boss.y - 16, 32, 32);
+  if (boss.health <= boss.maxHealth / 2) {
+    ctx.strokeStyle = "rgba(255,159,92,0.78)";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(boss.x - 19, boss.y - 19, 38, 38);
+  }
   ctx.fillStyle = "#2e1733";
   ctx.fillRect(boss.x - 10, boss.y - 12, 20, 8);
   ctx.fillStyle = "#ffe0ef";
@@ -1869,6 +1989,24 @@ function drawPlayer() {
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(player.x, player.y, 19 + Math.sin(Date.now() / 120) * 2, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if ((player.focus || 0) > 0) {
+    const ready = player.focus >= focusMax;
+    const alpha = ready ? 0.72 + Math.sin(Date.now() / 80) * 0.18 : 0.24 + player.focus * 0.07;
+    ctx.strokeStyle = ready ? `rgba(247, 209, 84, ${alpha})` : `rgba(247, 209, 84, ${alpha})`;
+    ctx.lineWidth = ready ? 3 : 2;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, 23 + (ready ? Math.sin(Date.now() / 110) * 3 : player.focus), 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  if (gameState.lastFocusPulse) {
+    const pulse = gameState.lastFocusPulse;
+    const progress = 1 - pulse.timer / pulse.maxTimer;
+    ctx.strokeStyle = `rgba(247, 209, 84, ${1 - progress})`;
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(pulse.x, pulse.y, 18 + progress * 54, 0, Math.PI * 2);
     ctx.stroke();
   }
   if (gameState.lastAttackVisual) {
@@ -1984,6 +2122,7 @@ function draw() {
   drawNpcs();
   drawShops();
   drawBoss();
+  drawBossWarnings();
   drawFairy();
   drawPlayer();
   drawParticles();
@@ -2004,6 +2143,7 @@ function gameLoop() {
     updateEnemies();
     updateEnemyProjectiles();
     updateBoss();
+    updateBossWarnings();
     updateTerrainHazards();
     updatePortal();
     tickTimers();
