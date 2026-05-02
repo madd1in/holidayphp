@@ -23,6 +23,8 @@ Mobile controls appear automatically in mobile layout.
 
 - Six rebuilt maps: overworld, crypt, sky ruin, lava dungeon, crystal spring, moon citadel
 - MP3 BGM loaded from `assets/audio`
+- Sprite assets copied from `C:\Users\User\Downloads\zelda-mini\assets`
+- Extra procedural tile sprite map in `assets/extra-tile-sprite-map.png`
 - Relic powers: Glow, Echo, Wind, Ember, Prism, Star
 - Enemy roles: scout, brute, mage
 - Touch controls and fullscreen support for mobile

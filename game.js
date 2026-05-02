@@ -55,9 +55,13 @@ let complexAtlasReady = false;
 const playerAtlas = new Image();
 playerAtlas.src = "assets/player-normalized-sheet.png";
 let playerAtlasReady = false;
+const extraTilesAtlas = new Image();
+extraTilesAtlas.src = "assets/extra-tile-sprite-map.png";
+let extraTilesReady = false;
 const complexCellW = 96;
 const complexCellH = 128;
 const playerCellSize = 64;
+const extraTileSize = 32;
 
 const atlasFrames = {
   heroDown: [20, 104, 130, 176],
@@ -104,6 +108,10 @@ function cframe(col, row) {
 
 function pframe(col, row) {
   return [col * playerCellSize, row * playerCellSize, playerCellSize, playerCellSize];
+}
+
+function eframe(col, row = 0) {
+  return [col * extraTileSize, row * extraTileSize, extraTileSize, extraTileSize];
 }
 
 const complexFrames = {
@@ -216,6 +224,17 @@ const playerFrames = {
   heroShield: pframe(2, 4)
 };
 
+const extraTileFrames = {
+  forestFlowers: eframe(0),
+  mossPatch: eframe(1),
+  runeGlyph: eframe(2),
+  bridgeGrain: eframe(3),
+  lavaSpark: eframe(4),
+  crystalBloom: eframe(5),
+  moonStars: eframe(6),
+  vineShadow: eframe(7)
+};
+
 const complexThemeTiles = {
   forest: { floor: "grassA", floorAlt: "grassB", detail: "grassFlowers", crack: "grassDirt", wall: "hedgeA", wallAlt: "hedgeB" },
   crypt: { floor: "stoneA", floorAlt: "stoneCracked", detail: "runeFloor", crack: "stoneCracked", wall: "cryptWallA", wallAlt: "cryptWallB" },
@@ -253,6 +272,11 @@ complexAtlas.onload = () => {
 
 playerAtlas.onload = () => {
   playerAtlasReady = true;
+};
+
+extraTilesAtlas.onload = () => {
+  extraTilesReady = true;
+  mapCacheDirty = true;
 };
 
 const levels = [
@@ -1616,6 +1640,14 @@ function drawPlayerSprite(frameName, x, y, width, height, yOffset = 0) {
   return drawPlayerFrame(ctx, frameName, x - width / 2, y - height / 2 + yOffset, width, height);
 }
 
+function drawExtraTileFrame(targetCtx, frameName, x, y, width = tileSize, height = tileSize) {
+  if (!extraTilesReady || !extraTileFrames[frameName]) return false;
+  const [sx, sy, sw, sh] = extraTileFrames[frameName];
+  targetCtx.imageSmoothingEnabled = false;
+  targetCtx.drawImage(extraTilesAtlas, sx, sy, sw, sh, Math.round(x), Math.round(y), Math.round(width), Math.round(height));
+  return true;
+}
+
 function complexTileFrameName(tile, theme, x, y) {
   const themed = complexThemeTiles[theme] || complexThemeTiles.forest;
   if (tile === "#") return (x + y) % 3 === 0 ? themed.wallAlt : themed.wall;
@@ -1632,6 +1664,28 @@ function baseTileFrameName(tile, theme, x, y) {
   if (tile === "L") return "lavaFloor";
   if (tile === "=") return theme === "lava" ? "lavaWall" : "stone";
   return themedTiles.floor;
+}
+
+function extraTileFrameName(tile, theme, x, y) {
+  if (tile === ",") return theme === "forest" ? "forestFlowers" : "mossPatch";
+  if (tile === ":") return theme === "lava" ? "lavaSpark" : "runeGlyph";
+  if (tile === "R" || tile === "p") return "runeGlyph";
+  if (tile === "=") return "bridgeGrain";
+  if (tile === "L") return "lavaSpark";
+  if (tile === "~" && theme === "crystal") return "crystalBloom";
+  if (tile === "v") return "vineShadow";
+  if (wallTiles.has(tile)) {
+    if ((theme === "forest" || theme === "moon") && (x + y * 2) % 7 === 0) return "vineShadow";
+    if (theme === "crypt" && (x * 3 + y) % 9 === 0) return "runeGlyph";
+    return null;
+  }
+  if (theme === "forest" && (x * 5 + y * 3) % 11 === 0) return "forestFlowers";
+  if (theme === "crystal" && (x + y * 2) % 9 === 0) return "crystalBloom";
+  if (theme === "moon" && (x * 3 + y * 7) % 10 === 0) return "moonStars";
+  if (theme === "crypt" && (x * 2 + y) % 13 === 0) return "runeGlyph";
+  if (theme === "lava" && (x + y) % 8 === 0) return "lavaSpark";
+  if (theme === "sky" && (x * 7 + y) % 9 === 0) return "mossPatch";
+  return null;
 }
 
 function drawTileOverlay(targetCtx, tile, px, py, x, y, palette) {
@@ -1793,8 +1847,9 @@ function updateMapCache() {
       const px = x * tileSize;
       const py = y * tileSize;
       const isWall = wallTiles.has(tile);
-      const frameName = baseTileFrameName(tile, theme, x, y);
-      if (!drawAtlasFrame(mapCacheCtx, frameName, px, py, tileSize, tileSize)) {
+      const complexFrameName = complexTileFrameName(tile, theme, x, y);
+      const fallbackFrameName = baseTileFrameName(tile, theme, x, y);
+      if (!drawComplexFrame(mapCacheCtx, complexFrameName, px, py, tileSize, tileSize) && !drawAtlasFrame(mapCacheCtx, fallbackFrameName, px, py, tileSize, tileSize)) {
         mapCacheCtx.fillStyle = isWall ? palette.wall : palette.floor;
         mapCacheCtx.fillRect(px, py, tileSize, tileSize);
         mapCacheCtx.fillStyle = isWall ? palette.inner : palette.floor2;
@@ -1804,6 +1859,8 @@ function updateMapCache() {
         mapCacheCtx.fillStyle = palette.glow;
         mapCacheCtx.fillRect(px + 8 + (y % 2), py + 8 + (x % 2), 6, 6);
       }
+      const extraFrameName = extraTileFrameName(tile, theme, x, y);
+      if (extraFrameName) drawExtraTileFrame(mapCacheCtx, extraFrameName, px, py);
       drawTileOverlay(mapCacheCtx, tile, px, py, x, y, palette);
     }
   }
