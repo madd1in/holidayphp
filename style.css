@@ -191,8 +191,7 @@ h1 {
 .tips-card {
   border-radius: 16px;
   border: 1px solid rgba(255, 255, 255, 0.06);
-  background: rgba(255, 255, 255, 0.045);
-  backdrop-filter: blur(6px);
+  background: rgba(18, 26, 22, 0.72);
 }
 
 .hud-card {
@@ -363,7 +362,6 @@ button.secondary {
     inset 0 -3px 0 rgba(0, 0, 0, 0.24),
     0 5px 14px rgba(0, 0, 0, 0.24),
     0 0 0 1px rgba(142, 240, 189, 0.08);
-  backdrop-filter: blur(4px);
   opacity: 0.9;
 }
 
@@ -473,10 +471,9 @@ button.secondary {
   font-size: 0.9rem;
   font-weight: 900;
   text-shadow: 0 1px 0 #000;
-  background: rgba(9, 23, 18, 0.48);
+  background: rgba(9, 23, 18, 0.62);
   border: 2px solid rgba(142, 240, 189, 0.38);
   box-shadow: 0 5px 14px rgba(0, 0, 0, 0.24);
-  backdrop-filter: blur(4px);
   opacity: 0.92;
 }
 

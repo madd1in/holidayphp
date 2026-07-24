@@ -739,6 +739,8 @@ function buildLevel(levelIndex, existingPlayer, saved) {
   }));
 
   mapCacheDirty = true;
+  minimapBaseDirty = true;
+  themeBgDirty = true;
   enemyProjectiles = [];
   bossWarnings = [];
   const state = { map, player, keys, enemies, chests, npcs, shops, altars, relics, boss, door, portal, keysRequired, collectedKeys: 0, victory: false, gameOver: false, levelIndex, levelName: def.name, finishedGame: false, enemyClearRewarded: false, fairy: createFairy(player), quests: createQuestState(), lastAttackVisual: null, lastFocusPulse: null };
@@ -1802,28 +1804,42 @@ function playerComplexFrameName(player) {
   return `hero${direction}Idle`;
 }
 
+function updateThemeBg(theme) {
+  if (!themeBgCanvas) {
+    themeBgCanvas = document.createElement("canvas");
+    themeBgCanvas.width = canvas.width;
+    themeBgCanvas.height = canvas.height;
+    themeBgCtx = themeBgCanvas.getContext("2d");
+  }
+  themeBgCtx.clearRect(0, 0, themeBgCanvas.width, themeBgCanvas.height);
+  if (theme === "forest") {
+    themeBgCtx.fillStyle = "rgba(100, 180, 120, 0.08)";
+    for (let i = 0; i < 6; i += 1) themeBgCtx.fillRect(i * 120, canvas.height - 90 - (i % 2) * 18, 82, 88);
+  } else if (theme === "crypt") {
+    themeBgCtx.fillStyle = "rgba(160, 120, 220, 0.05)";
+    for (let i = 0; i < 8; i += 1) themeBgCtx.fillRect(i * 90, 30 + (i % 3) * 24, 56, 120);
+  } else if (theme === "sky") {
+    themeBgCtx.fillStyle = "rgba(180, 240, 255, 0.05)";
+    for (let i = 0; i < 5; i += 1) themeBgCtx.fillRect(50 + i * 120, 40 + (i % 2) * 18, 96, 44);
+  } else if (theme === "lava") {
+    themeBgCtx.fillStyle = "rgba(255, 120, 70, 0.08)";
+    for (let i = 0; i < 6; i += 1) themeBgCtx.fillRect(i * 120, canvas.height - 80 - (i % 2) * 20, 90, 80);
+  } else if (theme === "crystal") {
+    themeBgCtx.fillStyle = "rgba(120, 210, 255, 0.07)";
+    for (let i = 0; i < 7; i += 1) themeBgCtx.fillRect(i * 96, 28 + (i % 2) * 120, 24, 120);
+  } else {
+    themeBgCtx.fillStyle = "rgba(220, 220, 255, 0.05)";
+    for (let i = 0; i < 10; i += 1) themeBgCtx.fillRect(40 + i * 58, 30 + (i % 2) * 12, 2, 2);
+  }
+  themeBgDirty = false;
+  themeBgTheme = theme;
+}
+
 function drawBackgroundAtmosphere() {
   if (backgroundSpecks.length === 0) initBackgroundSpecks();
   const theme = levels[gameState.levelIndex].theme;
-  if (theme === "forest") {
-    ctx.fillStyle = "rgba(100, 180, 120, 0.08)";
-    for (let i = 0; i < 6; i += 1) ctx.fillRect(i * 120, canvas.height - 90 - (i % 2) * 18, 82, 88);
-  } else if (theme === "crypt") {
-    ctx.fillStyle = "rgba(160, 120, 220, 0.05)";
-    for (let i = 0; i < 8; i += 1) ctx.fillRect(i * 90, 30 + (i % 3) * 24, 56, 120);
-  } else if (theme === "sky") {
-    ctx.fillStyle = "rgba(180, 240, 255, 0.05)";
-    for (let i = 0; i < 5; i += 1) ctx.fillRect(50 + i * 120, 40 + (i % 2) * 18, 96, 44);
-  } else if (theme === "lava") {
-    ctx.fillStyle = "rgba(255, 120, 70, 0.08)";
-    for (let i = 0; i < 6; i += 1) ctx.fillRect(i * 120, canvas.height - 80 - (i % 2) * 20, 90, 80);
-  } else if (theme === "crystal") {
-    ctx.fillStyle = "rgba(120, 210, 255, 0.07)";
-    for (let i = 0; i < 7; i += 1) ctx.fillRect(i * 96, 28 + (i % 2) * 120, 24, 120);
-  } else {
-    ctx.fillStyle = "rgba(220, 220, 255, 0.05)";
-    for (let i = 0; i < 10; i += 1) ctx.fillRect(40 + i * 58, 30 + (i % 2) * 12, 2, 2);
-  }
+  if (themeBgDirty || themeBgTheme !== theme) updateThemeBg(theme);
+  ctx.drawImage(themeBgCanvas, 0, 0);
   for (const speck of backgroundSpecks) {
     ctx.fillStyle = `rgba(255,255,255,${speck.alpha})`;
     ctx.fillRect(speck.x, speck.y, speck.size, speck.size);
@@ -1833,6 +1849,13 @@ function drawBackgroundAtmosphere() {
 let mapCacheCanvas = null;
 let mapCacheCtx = null;
 let mapCacheDirty = true;
+let minimapBaseCanvas = null;
+let minimapBaseCtx = null;
+let minimapBaseDirty = true;
+let themeBgCanvas = null;
+let themeBgCtx = null;
+let themeBgDirty = true;
+let themeBgTheme = null;
 
 function updateMapCache() {
   if (!mapCacheCanvas) {
@@ -2167,18 +2190,33 @@ function drawParticles() {
   ctx.globalAlpha = 1;
 }
 
-function drawMinimap() {
+function updateMinimapBase() {
+  if (!minimapBaseCanvas) {
+    minimapBaseCanvas = document.createElement("canvas");
+    minimapBaseCanvas.width = minimapCanvas.width;
+    minimapBaseCanvas.height = minimapCanvas.height;
+    minimapBaseCtx = minimapBaseCanvas.getContext("2d");
+  }
   const scaleX = minimapCanvas.width / (mapWidth * tileSize);
   const scaleY = minimapCanvas.height / (mapHeight * tileSize);
-  minimapCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+  const palette = themePalette();
+  minimapBaseCtx.clearRect(0, 0, minimapBaseCanvas.width, minimapBaseCanvas.height);
   for (let y = 0; y < mapHeight; y += 1) {
     for (let x = 0; x < mapWidth; x += 1) {
       const tile = gameState.map[y][x];
-      const palette = themePalette();
-      minimapCtx.fillStyle = wallTiles.has(tile) ? palette.wall : hazardTiles.has(tile) ? "#ff7b63" : slowTiles.has(tile) ? "#4d89a2" : tile === "=" ? "#b78a55" : tile === "R" ? palette.portal : palette.floor;
-      minimapCtx.fillRect(x * tileSize * scaleX, y * tileSize * scaleY, tileSize * scaleX, tileSize * scaleY);
+      minimapBaseCtx.fillStyle = wallTiles.has(tile) ? palette.wall : hazardTiles.has(tile) ? "#ff7b63" : slowTiles.has(tile) ? "#4d89a2" : tile === "=" ? "#b78a55" : tile === "R" ? palette.portal : palette.floor;
+      minimapBaseCtx.fillRect(x * tileSize * scaleX, y * tileSize * scaleY, tileSize * scaleX, tileSize * scaleY);
     }
   }
+  minimapBaseDirty = false;
+}
+
+function drawMinimap() {
+  if (minimapBaseDirty) updateMinimapBase();
+  const scaleX = minimapCanvas.width / (mapWidth * tileSize);
+  const scaleY = minimapCanvas.height / (mapHeight * tileSize);
+  minimapCtx.clearRect(0, 0, minimapCanvas.width, minimapCanvas.height);
+  minimapCtx.drawImage(minimapBaseCanvas, 0, 0);
   minimapCtx.fillStyle = gameState.door.open ? "#87d96d" : "#804d2d";
   minimapCtx.fillRect(gameState.door.x * tileSize * scaleX, gameState.door.y * tileSize * scaleY, tileSize * scaleX, tileSize * scaleY);
   minimapCtx.fillStyle = "#7be7ff";
