@@ -1,6 +1,11 @@
 const SAVE_KEY = "mosswing-relic-quest-save-v10";
 const canvas = document.getElementById("game");
-const ctx = canvas.getContext("2d");
+const screenCtx = canvas.getContext("2d");
+const bufferCanvas = document.createElement("canvas");
+bufferCanvas.width = canvas.width;
+bufferCanvas.height = canvas.height;
+const ctx = bufferCanvas.getContext("2d");
+const FRAME_FILTER = "contrast(1.12) saturate(1.22) brightness(0.98)";
 
 const heartsEl = document.getElementById("hearts");
 const levelNameEl = document.getElementById("levelName");
@@ -2211,17 +2216,24 @@ function drawOverlay() {
   }
 }
 
+let cachedLight = null;
+let cachedLightKey = "";
+
 function drawLighting() {
   const p = gameState.player;
-  const lx = p.x - (Number.isFinite(gameState.cameraX) ? gameState.cameraX : 0);
-  const ly = p.y - (Number.isFinite(gameState.cameraY) ? gameState.cameraY : 0);
-  const radius = 250 + Math.sin(performance.now() * 0.005) * 12;
-  const light = ctx.createRadialGradient(lx, ly, 18, lx, ly, radius);
-  light.addColorStop(0, "rgba(255, 245, 190, 0.06)");
-  light.addColorStop(0.5, "rgba(0, 0, 0, 0)");
-  light.addColorStop(1, "rgba(0, 0, 0, 0.24)");
+  const lx = Math.round(p.x - (Number.isFinite(gameState.cameraX) ? gameState.cameraX : 0));
+  const ly = Math.round(p.y - (Number.isFinite(gameState.cameraY) ? gameState.cameraY : 0));
+  const radius = Math.round(250 + Math.sin(performance.now() * 0.005) * 12);
+  const key = `${lx},${ly},${radius}`;
+  if (!cachedLight || key !== cachedLightKey) {
+    cachedLight = ctx.createRadialGradient(lx, ly, 18, lx, ly, radius);
+    cachedLight.addColorStop(0, "rgba(255, 245, 190, 0.06)");
+    cachedLight.addColorStop(0.5, "rgba(0, 0, 0, 0)");
+    cachedLight.addColorStop(1, "rgba(0, 0, 0, 0.24)");
+    cachedLightKey = key;
+  }
   ctx.save();
-  ctx.fillStyle = light;
+  ctx.fillStyle = cachedLight;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   ctx.restore();
 }
@@ -2249,6 +2261,11 @@ function draw() {
   drawOverlay();
   ctx.restore();
   drawLighting();
+  screenCtx.save();
+  screenCtx.filter = FRAME_FILTER;
+  screenCtx.clearRect(0, 0, canvas.width, canvas.height);
+  screenCtx.drawImage(bufferCanvas, 0, 0);
+  screenCtx.restore();
   drawMinimap();
 }
 
