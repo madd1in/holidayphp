@@ -1,11 +1,6 @@
 const SAVE_KEY = "mosswing-relic-quest-save-v10";
 const canvas = document.getElementById("game");
-const screenCtx = canvas.getContext("2d");
-const bufferCanvas = document.createElement("canvas");
-bufferCanvas.width = canvas.width;
-bufferCanvas.height = canvas.height;
-const ctx = bufferCanvas.getContext("2d");
-const FRAME_FILTER = "contrast(1.12) saturate(1.22) brightness(0.98)";
+const ctx = canvas.getContext("2d");
 
 const heartsEl = document.getElementById("hearts");
 const levelNameEl = document.getElementById("levelName");
@@ -2299,11 +2294,6 @@ function draw() {
   drawOverlay();
   ctx.restore();
   drawLighting();
-  screenCtx.save();
-  screenCtx.filter = FRAME_FILTER;
-  screenCtx.clearRect(0, 0, canvas.width, canvas.height);
-  screenCtx.drawImage(bufferCanvas, 0, 0);
-  screenCtx.restore();
   drawMinimap();
 }
 
